@@ -1,1 +1,21 @@
-<!DOCTYPE html><html><head><meta http-equiv="Content-Type" content="text/html" charset="utf-8"><link rel="stylesheet" href="/css/bootstrap.min.css"><title>ISUxi</title></head><body class="container"><h1 class="jumbotron"><a href="/">ISUxiへようこそ!</a></h1><h2>あしあとリスト</h2><div class="row panel panel-primary" id="footprints"><ul class="list-group">{{ range .Footprints }}{{ $owner := getUser .OwnerID }}<li class="list-group-item footprints-footprint">{{ .Updated.Format "2006-01-02 15:04:05" }}: <a href="/profile/{{ $owner.AccountName }}">{{ $owner.NickName }}さん</a></li>{{ end }}</ul></div></body></html>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html" charset="utf-8">
+    <link rel="stylesheet" href="/css/bootstrap.min.css">
+    <title>ISUxi</title>
+</head>
+
+<body class="container">
+<h1 class="jumbotron"><a href="/">ISUxiへようこそ!</a></h1>
+<h2>あしあとリスト</h2>
+<div class="row panel panel-primary" id="footprints">
+    <ul class="list-group">
+        {{ range .Footprints }}
+        {{ $owner := getUser .OwnerID }}
+        <li class="list-group-item footprints-footprint">{{ .Updated.Format "2006-01-02 15:04:05" }}: <a href="/profile/{{ $owner.AccountName }}">{{ $owner.NickName }}さん</a></li>
+        {{ end }}
+    </ul>
+</div>
+</body>
+</html>
