@@ -723,7 +723,7 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 	var fp *os.File
 	var err error
 
-	f, err := os.OpenFile("/tmp/goapp.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	f, err := os.OpenFile("/home/isucon/tmp/goapp.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal("error opening file :", err.Error())
 	}
