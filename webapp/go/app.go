@@ -3,18 +3,22 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"html/template"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path"
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -791,7 +795,29 @@ func main() {
 	r.HandleFunc("/initialize", myHandler(GetInitialize))
 	r.HandleFunc("/", myHandler(GetIndex))
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("../static")))
-	log.Fatal(http.ListenAndServe(":8080", r))
+
+	s := "/dev/shm/app.sock"
+	os.Remove(s)
+	ll, err := net.Listen("unix", s)
+	if err != nil {
+		fmt.Println("%s\n", err);
+		return
+	}
+	os.Chmod(s, 0777)
+
+	sigc := make(chan os.Signal, 1);
+	signal.Notify(sigc, os.Interrupt, os.Kill, syscall.SIGTERM)
+	go func(c chan os.Signal){
+		sig := <-c
+		log.Printf("Caught signal %s: shutting down", sig)
+		ll.Close()
+		os.Exit(0)
+	}(sigc)
+
+	err = http.Serve(ll, r)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func checkErr(err error) {
