@@ -732,7 +732,7 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 
-	fp, err = os.Open("../../rel.tsv")
+	fp, err = os.Open("/home/isucon/isucon5-qualifier/rel.tsv")
 	if err != nil {
 		panic(err)
 	}
