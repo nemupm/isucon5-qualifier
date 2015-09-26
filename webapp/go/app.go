@@ -763,6 +763,8 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 		fmap[record[1]][record[0]] = record[2]
 	}
 
+	log.Printf("%#v", fmap)
+
 	defer func() {
 		duration := time.Now().Sub(start)
 		log.Println(duration)
