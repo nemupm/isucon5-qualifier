@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"github.com/go-sql-driver/mysql"
@@ -9,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"html/template"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -23,8 +25,9 @@ import (
 )
 
 var (
-	db    *sql.DB
-	store *sessions.CookieStore
+	db     *sql.DB
+	store  *sessions.CookieStore
+	frimap map[int]map[int]time.Time
 )
 
 type User struct {
@@ -159,11 +162,9 @@ func getUserFromAccount(w http.ResponseWriter, name string) *User {
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	id := session.Values["user_id"]
-	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?) OR (one = ? AND another = ?)`, id, anotherID, anotherID, id)
-	cnt := new(int)
-	err := row.Scan(cnt)
-	checkErr(err)
-	return *cnt > 0
+
+	_, exist := frimap[id.(int)][anotherID]
+	return exist
 }
 
 func isFriendAccount(w http.ResponseWriter, r *http.Request, name string) bool {
@@ -388,27 +389,34 @@ LIMIT 10`, user.ID)
 	}
 	rows.Close()
 
-	rows, err = db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
-	if err != sql.ErrNoRows {
-		checkErr(err)
+	var friendList map[int]time.Time
+	if _, exist := frimap[user.ID]; !exist {
+		friendList = make(map[int]time.Time)
+	} else {
+		friendList = frimap[user.ID]
 	}
-	friendsMap := make(map[int]time.Time)
-	for rows.Next() {
-		var id, one, another int
-		var createdAt time.Time
-		checkErr(rows.Scan(&id, &one, &another, &createdAt))
-		var friendID int
-		if one == user.ID {
-			friendID = another
-		} else {
-			friendID = one
-		}
-		if _, ok := friendsMap[friendID]; !ok {
-			friendsMap[friendID] = createdAt
-		}
-	}
-	friends := make([]Friend, 0, len(friendsMap))
-	for key, val := range friendsMap {
+
+	// rows, err = db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
+	// if err != sql.ErrNoRows {
+	// 	checkErr(err)
+	// }
+	// friendsMap := make(map[int]time.Time)
+	// for rows.Next() {
+	// 	var id, one, another int
+	// 	var createdAt time.Time
+	// 	checkErr(rows.Scan(&id, &one, &another, &createdAt))
+	// 	var friendID int
+	// 	if one == user.ID {
+	// 		friendID = another
+	// 	} else {
+	// 		friendID = one
+	// 	}
+	// 	if _, ok := friendsMap[friendID]; !ok {
+	// 		friendsMap[friendID] = createdAt
+	// 	}
+	// }
+	friends := make([]Friend, 0, len(friendList))
+	for key, val := range friendList {
 		friends = append(friends, Friend{key, val})
 	}
 	rows.Close()
@@ -674,28 +682,36 @@ func GetFriends(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := getCurrentUser(w, r)
-	rows, err := db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
-	if err != sql.ErrNoRows {
-		checkErr(err)
+
+	var friendList map[int]time.Time
+	if _, exist := frimap[user.ID]; !exist {
+		friendList = make(map[int]time.Time)
+	} else {
+		friendList = frimap[user.ID]
 	}
-	friendsMap := make(map[int]time.Time)
-	for rows.Next() {
-		var id, one, another int
-		var createdAt time.Time
-		checkErr(rows.Scan(&id, &one, &another, &createdAt))
-		var friendID int
-		if one == user.ID {
-			friendID = another
-		} else {
-			friendID = one
-		}
-		if _, ok := friendsMap[friendID]; !ok {
-			friendsMap[friendID] = createdAt
-		}
-	}
-	rows.Close()
-	friends := make([]Friend, 0, len(friendsMap))
-	for key, val := range friendsMap {
+
+	// rows, err := db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
+	// if err != sql.ErrNoRows {
+	// 	checkErr(err)
+	// }
+	// friendsMap := make(map[int]time.Time)
+	// for rows.Next() {
+	// 	var id, one, another int
+	// 	var createdAt time.Time
+	// 	checkErr(rows.Scan(&id, &one, &another, &createdAt))
+	// 	var friendID int
+	// 	if one == user.ID {
+	// 		friendID = another
+	// 	} else {
+	// 		friendID = one
+	// 	}
+	// 	if _, ok := friendsMap[friendID]; !ok {
+	// 		friendsMap[friendID] = createdAt
+	// 	}
+	// }
+	// rows.Close()
+	friends := make([]Friend, 0, len(friendList))
+	for key, val := range friendList {
 		friends = append(friends, Friend{key, val})
 	}
 	render(w, r, http.StatusOK, "friends.html", struct{ Friends []Friend }{friends})
@@ -710,13 +726,78 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 	anotherAccount := mux.Vars(r)["account_name"]
 	if !isFriendAccount(w, r, anotherAccount) {
 		another := getUserFromAccount(w, anotherAccount)
-		_, err := db.Exec(`INSERT INTO relations (one, another) VALUES (?,?), (?,?)`, user.ID, another.ID, another.ID, user.ID)
-		checkErr(err)
+
+		if _, exist := frimap[user.ID]; !exist {
+			frimap[user.ID] = make(map[int]time.Time)
+		}
+		frimap[user.ID][another.ID] = time.Now()
+
+		if _, exist := frimap[another.ID]; !exist {
+			frimap[another.ID] = make(map[int]time.Time)
+		}
+		frimap[another.ID][user.ID] = time.Now()
+
 		http.Redirect(w, r, "/friends", http.StatusSeeOther)
 	}
 }
 
 func GetInitialize(w http.ResponseWriter, r *http.Request) {
+	var fp *os.File
+	var err error
+
+	f, err := os.OpenFile("/home/isucon/tmp/goapp.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatal("error opening file :", err.Error())
+	}
+
+	log.SetOutput(f)
+
+	start := time.Now()
+
+	fp, err = os.Open("/home/isucon/isucon5-qualifier/rel.tsv")
+	if err != nil {
+		panic(err)
+	}
+	defer fp.Close()
+
+	reader := csv.NewReader(fp)
+	reader.Comma = '\t'
+	reader.LazyQuotes = true
+
+	frimap = make(map[int]map[int]time.Time)
+
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			panic(err)
+		}
+
+		t, _ := time.Parse("2006-01-02 15:04:05", record[2])
+
+		id0, _ := strconv.Atoi(record[0])
+		id1, _ := strconv.Atoi(record[1])
+
+		if _, exist := frimap[id0]; !exist {
+			frimap[id0] = make(map[int]time.Time)
+		}
+
+		frimap[id0][id1] = t
+
+		if _, exist := frimap[id1]; !exist {
+			frimap[id1] = make(map[int]time.Time)
+		}
+		frimap[id1][id0] = t
+	}
+
+	log.Printf("%#v", frimap)
+
+	defer func() {
+		duration := time.Now().Sub(start)
+		log.Println(duration)
+	}()
+
 	db.Exec("set global max_connections=1024")
 	db.Exec("set global max_allowed_packet=300000000")
 	// slow query用の設定
@@ -799,14 +880,14 @@ func main() {
 	s := "/dev/shm/app.sock"
 	ll, err := net.Listen("unix", s)
 	if err != nil {
-		fmt.Println("%s\n", err);
+		fmt.Println("%s\n", err)
 		return
 	}
 	os.Chmod(s, 0777)
 
-	sigc := make(chan os.Signal, 1);
+	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, os.Interrupt, os.Kill, syscall.SIGTERM)
-	go func(c chan os.Signal){
+	go func(c chan os.Signal) {
 		sig := <-c
 		log.Printf("Caught signal %s: shutting down", sig)
 		ll.Close()
