@@ -713,6 +713,8 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetInitialize(w http.ResponseWriter, r *http.Request) {
+	db.Exec("set global max_connections=1024")
+	db.Exec("set global max_allowed_packet=300000000")
 	db.Exec("DELETE FROM relations WHERE id > 500000")
 	db.Exec("DELETE FROM footprints WHERE id > 500000")
 	db.Exec("DELETE FROM entries WHERE id > 500000")
