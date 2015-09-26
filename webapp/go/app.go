@@ -717,6 +717,41 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetInitialize(w http.ResponseWriter, r *http.Request) {
+	var fp *os.File
+	var err error
+	fp, err = os.Open("hoge-aa")
+	if err != nil {
+		panic(err)
+	}
+	defer fp.Close()
+
+	reader := csv.NewReader(fp)
+	reader.Comma = '\t'
+	reader.LazyQuotes = true
+
+	m := make(map[string]map[string]string)
+
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			panic(err)
+		}
+
+		if _, exist := m[record[0]]; !exist {
+			m[record[0]] = make(map[string]string)
+		}
+		m[record[0]][record[1]] = record[2]
+
+		if _, exist := m[record[1]]; !exist {
+			m[record[1]] = make(map[string]string)
+		}
+		m[record[1]][record[0]] = record[2]
+
+	}
+	fmt.Println(m)
+
 	db.Exec("set global max_connections=1024")
 	db.Exec("set global max_allowed_packet=300000000")
 	// slow query用の設定
@@ -799,14 +834,14 @@ func main() {
 	s := "/dev/shm/app.sock"
 	ll, err := net.Listen("unix", s)
 	if err != nil {
-		fmt.Println("%s\n", err);
+		fmt.Println("%s\n", err)
 		return
 	}
 	os.Chmod(s, 0777)
 
-	sigc := make(chan os.Signal, 1);
+	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, os.Interrupt, os.Kill, syscall.SIGTERM)
-	go func(c chan os.Signal){
+	go func(c chan os.Signal) {
 		sig := <-c
 		log.Printf("Caught signal %s: shutting down", sig)
 		ll.Close()
