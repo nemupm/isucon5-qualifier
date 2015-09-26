@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"github.com/go-sql-driver/mysql"
@@ -9,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"html/template"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -25,6 +27,7 @@ import (
 var (
 	db    *sql.DB
 	store *sessions.CookieStore
+	fmap  map[string]map[string]string
 )
 
 type User struct {
@@ -719,7 +722,17 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 func GetInitialize(w http.ResponseWriter, r *http.Request) {
 	var fp *os.File
 	var err error
-	fp, err = os.Open("hoge-aa")
+
+	f, err := os.OpenFile("/tmp/goapp.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatal("error opening file :", err.Error())
+	}
+
+	log.SetOutput(f)
+
+	start := time.Now()
+
+	fp, err = os.Open("../../rel.tsv")
 	if err != nil {
 		panic(err)
 	}
@@ -729,7 +742,7 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 	reader.Comma = '\t'
 	reader.LazyQuotes = true
 
-	m := make(map[string]map[string]string)
+	fmap = make(map[string]map[string]string)
 
 	for {
 		record, err := reader.Read()
@@ -739,18 +752,21 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 
-		if _, exist := m[record[0]]; !exist {
-			m[record[0]] = make(map[string]string)
+		if _, exist := fmap[record[0]]; !exist {
+			fmap[record[0]] = make(map[string]string)
 		}
-		m[record[0]][record[1]] = record[2]
+		fmap[record[0]][record[1]] = record[2]
 
-		if _, exist := m[record[1]]; !exist {
-			m[record[1]] = make(map[string]string)
+		if _, exist := fmap[record[1]]; !exist {
+			fmap[record[1]] = make(map[string]string)
 		}
-		m[record[1]][record[0]] = record[2]
-
+		fmap[record[1]][record[0]] = record[2]
 	}
-	fmt.Println(m)
+
+	defer func() {
+		duration := time.Now().Sub(start)
+		log.Println(duration)
+	}()
 
 	db.Exec("set global max_connections=1024")
 	db.Exec("set global max_allowed_packet=300000000")
