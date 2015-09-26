@@ -745,15 +745,6 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 	var fp *os.File
 	var err error
 
-	f, err := os.OpenFile("/home/isucon/tmp/goapp.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatal("error opening file :", err.Error())
-	}
-
-	log.SetOutput(f)
-
-	start := time.Now()
-
 	fp, err = os.Open("/home/isucon/isucon5-qualifier/rel.tsv")
 	if err != nil {
 		panic(err)
@@ -791,23 +782,16 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 		frimap[id1][id0] = t
 	}
 
-	log.Printf("%#v", frimap)
-
-	defer func() {
-		duration := time.Now().Sub(start)
-		log.Println(duration)
-	}()
-
 	db.Exec("set global max_connections=1024")
 	db.Exec("set global max_allowed_packet=300000000")
 	// slow query用の設定
 	// on or off
-	db.Exec("set global slow_query_log=1")
+	// db.Exec("set global slow_query_log=1")
 	// queryの発行に0秒以上かかったもの全部記録
-	db.Exec("set global long_query_time=0")
+	// db.Exec("set global long_query_time=0")
 	// index使ってないqueryも記録
-	db.Exec("set global log_queries_not_using_indexes=1")
-	db.Exec("set global slow_query_log_file=/var/log/slow-query.log")
+	// db.Exec("set global log_queries_not_using_indexes=1")
+	// db.Exec("set global slow_query_log_file=/var/log/slow-query.log")
 
 	db.Exec("DELETE FROM relations WHERE id > 500000")
 	db.Exec("DELETE FROM footprints WHERE id > 500000")
