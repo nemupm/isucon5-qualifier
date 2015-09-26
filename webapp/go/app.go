@@ -25,9 +25,9 @@ import (
 )
 
 var (
-	db    *sql.DB
-	store *sessions.CookieStore
-	frimap  map[string]map[string]time.Time
+	db     *sql.DB
+	store  *sessions.CookieStore
+	frimap map[int]map[int]time.Time
 )
 
 type User struct {
@@ -162,11 +162,9 @@ func getUserFromAccount(w http.ResponseWriter, name string) *User {
 func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	id := session.Values["user_id"]
-	row := db.QueryRow(`SELECT COUNT(1) AS cnt FROM relations WHERE (one = ? AND another = ?) OR (one = ? AND another = ?)`, id, anotherID, anotherID, id)
-	cnt := new(int)
-	err := row.Scan(cnt)
-	checkErr(err)
-	return *cnt > 0
+
+	_, exist := frimap[id]
+	return exist
 }
 
 func isFriendAccount(w http.ResponseWriter, r *http.Request, name string) bool {
@@ -391,26 +389,28 @@ LIMIT 10`, user.ID)
 	}
 	rows.Close()
 
-	rows, err = db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
-	if err != sql.ErrNoRows {
-		checkErr(err)
-	}
-	friendsMap := make(map[int]time.Time)
-	for rows.Next() {
-		var id, one, another int
-		var createdAt time.Time
-		checkErr(rows.Scan(&id, &one, &another, &createdAt))
-		var friendID int
-		if one == user.ID {
-			friendID = another
-		} else {
-			friendID = one
-		}
-		if _, ok := friendsMap[friendID]; !ok {
-			friendsMap[friendID] = createdAt
-		}
-	}
-	friends := make([]Friend, 0, len(friendsMap))
+	friendList, exist := frimap[user.ID]
+
+	// rows, err = db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
+	// if err != sql.ErrNoRows {
+	// 	checkErr(err)
+	// }
+	// friendsMap := make(map[int]time.Time)
+	// for rows.Next() {
+	// 	var id, one, another int
+	// 	var createdAt time.Time
+	// 	checkErr(rows.Scan(&id, &one, &another, &createdAt))
+	// 	var friendID int
+	// 	if one == user.ID {
+	// 		friendID = another
+	// 	} else {
+	// 		friendID = one
+	// 	}
+	// 	if _, ok := friendsMap[friendID]; !ok {
+	// 		friendsMap[friendID] = createdAt
+	// 	}
+	// }
+	friends := make([]Friend, 0, len(freeList))
 	for key, val := range friendsMap {
 		friends = append(friends, Friend{key, val})
 	}
@@ -677,27 +677,28 @@ func GetFriends(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := getCurrentUser(w, r)
-	rows, err := db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
-	if err != sql.ErrNoRows {
-		checkErr(err)
-	}
-	friendsMap := make(map[int]time.Time)
-	for rows.Next() {
-		var id, one, another int
-		var createdAt time.Time
-		checkErr(rows.Scan(&id, &one, &another, &createdAt))
-		var friendID int
-		if one == user.ID {
-			friendID = another
-		} else {
-			friendID = one
-		}
-		if _, ok := friendsMap[friendID]; !ok {
-			friendsMap[friendID] = createdAt
-		}
-	}
-	rows.Close()
-	friends := make([]Friend, 0, len(friendsMap))
+	friendList, exist := frimap[user.ID]
+	// rows, err := db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
+	// if err != sql.ErrNoRows {
+	// 	checkErr(err)
+	// }
+	// friendsMap := make(map[int]time.Time)
+	// for rows.Next() {
+	// 	var id, one, another int
+	// 	var createdAt time.Time
+	// 	checkErr(rows.Scan(&id, &one, &another, &createdAt))
+	// 	var friendID int
+	// 	if one == user.ID {
+	// 		friendID = another
+	// 	} else {
+	// 		friendID = one
+	// 	}
+	// 	if _, ok := friendsMap[friendID]; !ok {
+	// 		friendsMap[friendID] = createdAt
+	// 	}
+	// }
+	// rows.Close()
+	friends := make([]Friend, 0, len(friendList))
 	for key, val := range friendsMap {
 		friends = append(friends, Friend{key, val})
 	}
@@ -713,8 +714,17 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 	anotherAccount := mux.Vars(r)["account_name"]
 	if !isFriendAccount(w, r, anotherAccount) {
 		another := getUserFromAccount(w, anotherAccount)
-		_, err := db.Exec(`INSERT INTO relations (one, another) VALUES (?,?), (?,?)`, user.ID, another.ID, another.ID, user.ID)
-		checkErr(err)
+
+		if _, exist := frimap[user.ID]; !exist {
+			frimap[user.ID] = make(map[int]time.Time)
+		}
+		frimap[user.ID][another.ID] = time.Now()
+
+		if _, exist := frimap[another.ID]; !exist {
+			frimap[another.ID] = make(map[int]time.Time)
+		}
+		frimap[another.ID][user.ID] = time.Now()
+
 		http.Redirect(w, r, "/friends", http.StatusSeeOther)
 	}
 }
@@ -742,7 +752,7 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 	reader.Comma = '\t'
 	reader.LazyQuotes = true
 
-	frimap = make(map[string]map[string]time.Time)
+	frimap = make(map[int]map[int]time.Time)
 
 	for {
 		record, err := reader.Read()
@@ -755,13 +765,13 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 		t, _ := time.Parse("2006-01-02 15:04:05", record[2])
 
 		if _, exist := frimap[record[0]]; !exist {
-			frimap[record[0]] = make(map[string]time.Time)
+			frimap[record[0]] = make(map[int]time.Time)
 		}
 
 		frimap[record[0]][record[1]] = t
 
 		if _, exist := frimap[record[1]]; !exist {
-			frimap[record[1]] = make(map[string]time.Time)
+			frimap[record[1]] = make(map[int]time.Time)
 		}
 		frimap[record[1]][record[0]] = t
 	}
