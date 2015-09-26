@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha512"
 	"database/sql"
 	"encoding/csv"
 	"errors"
@@ -25,10 +26,17 @@ import (
 )
 
 var (
-	db     *sql.DB
-	store  *sessions.CookieStore
-	frimap map[int]map[int]time.Time
+	db       *sql.DB
+	store    *sessions.CookieStore
+	frimap   map[int]map[int]time.Time
+	userMap  map[string]userMemory
+	saltsMap map[int]string
 )
+
+type userMemory struct {
+	ID       int
+	password string
+}
 
 type User struct {
 	ID          int
@@ -88,6 +96,10 @@ var (
 )
 
 func authenticate(w http.ResponseWriter, r *http.Request, email, passwd string) {
+	usermem, exit := userMap[email]
+
+	usersalt := user
+
 	query := `SELECT u.id AS id, u.account_name AS account_name, u.nick_name AS nick_name, u.email AS email
 FROM users u
 JOIN salts s ON u.id = s.user_id
@@ -743,6 +755,8 @@ func PostFriends(w http.ResponseWriter, r *http.Request) {
 
 func GetInitialize(w http.ResponseWriter, r *http.Request) {
 	var fp *os.File
+	var fuser *os.File
+	var fsalts *os.File
 	var err error
 
 	fp, err = os.Open("/home/isucon/isucon5-qualifier/rel.tsv")
@@ -780,6 +794,63 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 			frimap[id1] = make(map[int]time.Time)
 		}
 		frimap[id1][id0] = t
+	}
+
+	fuser, err = os.Open("/home/isucon/isucon5-qualifier/user.tsv")
+	if err != nil {
+		panic(err)
+	}
+	defer fuser.Close()
+
+	readerUser := csv.NewReader(fuser)
+	readerUser.Comma = '\t'
+	readerUser.LazyQuotes = true
+
+	userMap = make(map[string]userMemory)
+
+	for {
+		record, err := readerUser.Read()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			panic(err)
+		}
+
+		email := record[0]
+		password := record[1]
+		id := strconv.Atoi(record[2])
+
+		if _, exist := userMap[email]; !exist {
+			userMap[email] = userMemory{id, password}
+		}
+	}
+
+	fsalts, err = os.Open("/home/isucon/isucon5-qualifier/salts.tsv")
+	if err != nil {
+		panic(err)
+	}
+	defer fuser.Close()
+
+	readerSalts := csv.NewReader(fsalts)
+	readerSalts.Comma = '\t'
+	readerSalts.LazyQuotes = true
+
+	saltsMap = make(map[int]string)
+
+	for {
+		record, err := readerSalts.Read()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			panic(err)
+		}
+
+		id := strconv.Atoi(record[0])
+		salts := record[1]
+
+		if _, exist := saltsMap[id]; !exist {
+			saltsMap[id] = salts
+		}
 	}
 
 	db.Exec("set global max_connections=1024")
