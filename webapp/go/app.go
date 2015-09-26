@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -83,6 +84,35 @@ var (
 	ErrPermissionDenied = errors.New("Permission denied.")
 	ErrContentNotFound  = errors.New("Content not found.")
 )
+
+// メモリにテンプレートのせる
+var (
+	normalLogin    []byte
+	errorLogin	   []byte
+	errorForbidden []byte
+	errorNotFound  []byte
+)
+
+func init() {
+	loginTemplate := template.Must(template.ParseFiles("templates/login.html"))
+	errorTemplate := template.Must(template.ParseFiles("templates/error.html"))
+
+	normalLogin = makeTemplate(loginTemplate, nil)
+	errorLogin  = makeTemplate(loginTemplate, struct{ Message string }{"ログインに失敗しました"})
+	errorForbidden = makeTemplate(errorTemplate, struct{ Message string }{"友人のみしかアクセスできません"})
+	errorNotFound = makeTemplate(errorTemplate, struct{ Message string }{"要求されたコンテンツは存在しません"})
+}
+
+func makeTemplate(tmpl *template.Template, data interface{}) []byte {
+	buf := bytes.NewBufferString("")
+
+	err := tmpl.Execute(buf, data)
+	if err != nil {
+		panic(err)
+	}
+
+	return buf.Bytes()
+}
 
 func authenticate(w http.ResponseWriter, r *http.Request, email, passwd string) {
 	query := `SELECT u.id AS id, u.account_name AS account_name, u.nick_name AS nick_name, u.email AS email
@@ -200,13 +230,16 @@ func myHandler(fn func(http.ResponseWriter, *http.Request)) http.HandlerFunc {
 					session := getSession(w, r)
 					delete(session.Values, "user_id")
 					session.Save(r, w)
-					render(w, r, http.StatusUnauthorized, "login.html", struct{ Message string }{"ログインに失敗しました"})
+					w.WriteHeader(http.StatusUnauthorized)
+					w.Write(errorLogin)
 					return
 				case rcv == ErrPermissionDenied:
-					render(w, r, http.StatusForbidden, "error.html", struct{ Message string }{"友人のみしかアクセスできません"})
+					w.WriteHeader(http.StatusForbidden)
+					w.Write(errorForbidden)
 					return
 				case rcv == ErrContentNotFound:
-					render(w, r, http.StatusNotFound, "error.html", struct{ Message string }{"要求されたコンテンツは存在しません"})
+					w.WriteHeader(http.StatusNotFound)
+					w.Write(errorForbidden)
 					return
 				default:
 					var msg string
@@ -276,7 +309,8 @@ func render(w http.ResponseWriter, r *http.Request, status int, file string, dat
 }
 
 func GetLogin(w http.ResponseWriter, r *http.Request) {
-	render(w, r, http.StatusOK, "login.html", struct{ Message string }{"高負荷に耐えられるSNSコミュニティサイトへようこそ!"})
+	w.WriteHeader(http.StatusOK)
+	w.Write(normalLogin)
 }
 
 func PostLogin(w http.ResponseWriter, r *http.Request) {
