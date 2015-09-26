@@ -339,7 +339,7 @@ LIMIT 10`, user.ID)
 	}
 	rows.Close()
 
-	rows, err = db.Query(`SELECT id, user_id, private, SUBSTRING(body 1 FOR 30) created_at FROM entries ORDER BY created_at DESC LIMIT 1000`)
+	rows, err = db.Query(`SELECT id, user_id, private, SUBSTRING(body 1 FOR 90) created_at FROM entries ORDER BY created_at DESC LIMIT 1000`)
 	if err != sql.ErrNoRows {
 		checkErr(err)
 	}
