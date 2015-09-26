@@ -389,7 +389,11 @@ LIMIT 10`, user.ID)
 	}
 	rows.Close()
 
-	friendList, exist := frimap[user.ID]
+	if _, exist := frimap[id]; !exist {
+		friendList := make(map[int]time.Time)
+	} else {
+		friendList := frimap[id]
+	}
 
 	// rows, err = db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
 	// if err != sql.ErrNoRows {
@@ -410,7 +414,7 @@ LIMIT 10`, user.ID)
 	// 		friendsMap[friendID] = createdAt
 	// 	}
 	// }
-	friends := make([]Friend, 0, len(freeList))
+	friends := make([]Friend, 0, len(friendList))
 	for key, val := range friendsMap {
 		friends = append(friends, Friend{key, val})
 	}
@@ -677,7 +681,13 @@ func GetFriends(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := getCurrentUser(w, r)
-	friendList, exist := frimap[user.ID]
+
+	if _, exist := frimap[user.ID]; !exist {
+		friendList := make(map[int]time.Time)
+	} else {
+		friendList := frimap[user.ID]
+	}
+
 	// rows, err := db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
 	// if err != sql.ErrNoRows {
 	// 	checkErr(err)
