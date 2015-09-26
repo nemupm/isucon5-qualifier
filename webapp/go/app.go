@@ -163,7 +163,7 @@ func isFriend(w http.ResponseWriter, r *http.Request, anotherID int) bool {
 	session := getSession(w, r)
 	id := session.Values["user_id"]
 
-	_, exist := frimap[id]
+	_, exist := frimap[id.(int)][anotherID]
 	return exist
 }
 
@@ -389,10 +389,11 @@ LIMIT 10`, user.ID)
 	}
 	rows.Close()
 
-	if _, exist := frimap[id]; !exist {
-		friendList := make(map[int]time.Time)
+	var friendList map[int]time.Time
+	if _, exist := frimap[user.ID]; !exist {
+		friendList = make(map[int]time.Time)
 	} else {
-		friendList := frimap[id]
+		friendList = frimap[user.ID]
 	}
 
 	// rows, err = db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
@@ -415,7 +416,7 @@ LIMIT 10`, user.ID)
 	// 	}
 	// }
 	friends := make([]Friend, 0, len(friendList))
-	for key, val := range friendsMap {
+	for key, val := range friendList {
 		friends = append(friends, Friend{key, val})
 	}
 	rows.Close()
@@ -682,10 +683,11 @@ func GetFriends(w http.ResponseWriter, r *http.Request) {
 
 	user := getCurrentUser(w, r)
 
+	var friendList map[int]time.Time
 	if _, exist := frimap[user.ID]; !exist {
-		friendList := make(map[int]time.Time)
+		friendList = make(map[int]time.Time)
 	} else {
-		friendList := frimap[user.ID]
+		friendList = frimap[user.ID]
 	}
 
 	// rows, err := db.Query(`SELECT * FROM relations WHERE one = ? OR another = ? ORDER BY created_at DESC`, user.ID, user.ID)
@@ -709,7 +711,7 @@ func GetFriends(w http.ResponseWriter, r *http.Request) {
 	// }
 	// rows.Close()
 	friends := make([]Friend, 0, len(friendList))
-	for key, val := range friendsMap {
+	for key, val := range friendList {
 		friends = append(friends, Friend{key, val})
 	}
 	render(w, r, http.StatusOK, "friends.html", struct{ Friends []Friend }{friends})
@@ -774,16 +776,19 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 
 		t, _ := time.Parse("2006-01-02 15:04:05", record[2])
 
-		if _, exist := frimap[record[0]]; !exist {
-			frimap[record[0]] = make(map[int]time.Time)
+		id0, _ := strconv.Atoi(record[0])
+		id1, _ := strconv.Atoi(record[1])
+
+		if _, exist := frimap[id0]; !exist {
+			frimap[id0] = make(map[int]time.Time)
 		}
 
-		frimap[record[0]][record[1]] = t
+		frimap[id0][id1] = t
 
-		if _, exist := frimap[record[1]]; !exist {
-			frimap[record[1]] = make(map[int]time.Time)
+		if _, exist := frimap[id1]; !exist {
+			frimap[id1] = make(map[int]time.Time)
 		}
-		frimap[record[1]][record[0]] = t
+		frimap[id1][id0] = t
 	}
 
 	log.Printf("%#v", frimap)
