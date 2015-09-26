@@ -27,7 +27,7 @@ import (
 var (
 	db    *sql.DB
 	store *sessions.CookieStore
-	fmap  map[string]map[string]string
+	frimap  map[string]map[string]time.Time
 )
 
 type User struct {
@@ -742,7 +742,7 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 	reader.Comma = '\t'
 	reader.LazyQuotes = true
 
-	fmap = make(map[string]map[string]string)
+	frimap = make(map[string]map[string]time.Time)
 
 	for {
 		record, err := reader.Read()
@@ -752,18 +752,21 @@ func GetInitialize(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 
-		if _, exist := fmap[record[0]]; !exist {
-			fmap[record[0]] = make(map[string]string)
-		}
-		fmap[record[0]][record[1]] = record[2]
+		t, _ := time.Parse("2006-01-02 15:04:05", record[2])
 
-		if _, exist := fmap[record[1]]; !exist {
-			fmap[record[1]] = make(map[string]string)
+		if _, exist := frimap[record[0]]; !exist {
+			frimap[record[0]] = make(map[string]time.Time)
 		}
-		fmap[record[1]][record[0]] = record[2]
+
+		frimap[record[0]][record[1]] = t
+
+		if _, exist := frimap[record[1]]; !exist {
+			frimap[record[1]] = make(map[string]time.Time)
+		}
+		frimap[record[1]][record[0]] = t
 	}
 
-	log.Printf("%#v", fmap)
+	log.Printf("%#v", frimap)
 
 	defer func() {
 		duration := time.Now().Sub(start)
