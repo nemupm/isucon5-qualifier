@@ -22,6 +22,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"gopkg.in/boj/redistore.v1"
 )
 
 var (
@@ -832,7 +833,11 @@ func main() {
 	}
 	defer db.Close()
 
-	store = sessions.NewCookieStore([]byte(ssecret))
+	store, err := redistore.NewRediStore(100000, "tcp", ":6379", "", []byte(ssecret))
+	if err != nil {
+		panic(err)
+	}
+	defer store.Close()
 
 	r := mux.NewRouter()
 
